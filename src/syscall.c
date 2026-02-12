@@ -131,18 +131,32 @@ static char *
 get_str(pid_t pid, unsigned long peekregister)
 {
 	static char ret[PATH_MAX];
-	int i = 0;
+	int i;
 	char ch;
-	if(peekregister == 0)
+
+	if (peekregister == 0) {
 		ret[0] = '\0';
-	else {
-		do {
-			ch = (char) ptrace(PTRACE_PEEKDATA, pid, peekregister + i, NULL);
-			ret[i] = ch;
-			++i;
-		} while(ch);
-		ret[i] = '\0';
+		return ret;
 	}
+
+	for (i = 0; i < PATH_MAX - 1; i++) {
+		long data;
+
+		errno = 0;
+		data = ptrace(PTRACE_PEEKDATA, pid, peekregister + i, NULL);
+		if (data == -1 && errno != 0) {
+			// Invalid pointer or unreadable memory in traced process.
+			ret[0] = '\0';
+			return ret;
+		}
+
+		ch = (char)data;
+		ret[i] = ch;
+		if (!ch) {
+			return ret;
+		}
+	}
+	ret[PATH_MAX - 1] = '\0';
 
 	return ret;
 }
@@ -160,6 +174,13 @@ get_pid_fd_path(pid_t pid, int fd)
 		sprintf(procpath, "/proc/%i/fd/%i", pid, fd);
 
 	len = readlink(procpath, ret, PATH_MAX);
+	if (len < 0) {
+		ret[0] = '\0';
+		return ret;
+	}
+	if (len >= PATH_MAX) {
+		len = PATH_MAX - 1;
+	}
 	ret[len] = '\0';
 
 	return ret;
@@ -273,7 +294,7 @@ found:
 
 		if(flags & AT_FLW_ARG5) //for linkat() call
 			at_nofollow = (ptrace(PTRACE_PEEKUSER, pid, REG_ARG5, 0) & AT_SYMLINK_FOLLOW) ? 0 : 1;
-		else if (flags & AT_FLW_ARG5) //for fchownat() and fchmodat() calls
+		else if (flags & AT_NOFLW_ARG5) //for fchownat() and fchmodat() calls
 			at_nofollow = (ptrace(PTRACE_PEEKUSER, pid, REG_ARG5, 0) & AT_SYMLINK_NOFOLLOW) ? 1 : 0;
 		else if(flags & AT_NOFLW_ARG4) //for utimensat() call
 			at_nofollow = (ptrace(PTRACE_PEEKUSER, pid, REG_ARG4, 0) & AT_SYMLINK_NOFOLLOW) ? 1 : 0;
@@ -288,7 +309,7 @@ found:
 		if(path[0] != '/' && *path != 0) {
 			fd = ptrace(PTRACE_PEEKUSER, pid, REG_ARG1, 0);
 			fdpath = get_pid_fd_path(pid, fd);
-			sprintf(at_path, "%s/%s", fdpath, path);
+			snprintf(at_path, sizeof(at_path), "%s/%s", fdpath, path);
 			ret = path_arg_writable(ctx, pid, at_path, name, at_nofollow);
 		} else if (path[0] != '/' && *path == 0) {
 			fd = ptrace(PTRACE_PEEKUSER, pid, REG_ARG1, 0);
@@ -307,7 +328,7 @@ found:
 		if(path[0] != '/' && *path != 0) {
 			fd = ptrace(PTRACE_PEEKUSER, pid, REG_ARG2, 0);
 			fdpath = get_pid_fd_path(pid, fd);
-			sprintf(at_path, "%s/%s", fdpath, path);
+			snprintf(at_path, sizeof(at_path), "%s/%s", fdpath, path);
 			ret = path_arg_writable(ctx, pid, at_path, name, flags & DONT_FOLLOW);
 		} else if (path[0] != '/' && *path == 0) {
 			fd = ptrace(PTRACE_PEEKUSER, pid, REG_ARG2, 0);
@@ -323,7 +344,7 @@ found:
 		if(path[0] != '/' && *path != 0) {
 			fd = ptrace(PTRACE_PEEKUSER, pid, REG_ARG3, 0);
 			fdpath = get_pid_fd_path(pid, fd);
-			sprintf(at_path, "%s/%s", fdpath, path);
+			snprintf(at_path, sizeof(at_path), "%s/%s", fdpath, path);
 			ret = path_arg_writable(ctx, pid, at_path, name, flags & DONT_FOLLOW);
 		} else if (path[0] != '/' && *path == 0) {
 			fd = ptrace(PTRACE_PEEKUSER, pid, REG_ARG3, 0);

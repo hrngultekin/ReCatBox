@@ -260,6 +260,7 @@ core_trace_loop(struct trace_context *ctx)
 	int status;
 	int event;
 	pid_t pid;
+	unsigned long event_msg;
 	pid_t kpid;
 	int e;
 	long retcode = 0;
@@ -293,10 +294,13 @@ core_trace_loop(struct trace_context *ctx)
 				if (kid) catbox_syscall_handle(ctx, kid);
 				break;
 			case E_FORK:
-				e = ptrace(PTRACE_GETEVENTMSG, pid, 0, &kpid); //get the new kid's pid
+				e = ptrace(PTRACE_GETEVENTMSG, pid, 0, &event_msg); // get the new kid's pid
 				if (e != 0) {
-					fprintf(stderr, "geteventmsg %s\n", strerror(e));
+					fprintf(stderr, "geteventmsg error for pid (%d): %s\n", pid, strerror(errno));
+					ptrace(PTRACE_SYSCALL, pid, 0, 0);
+					break;
 				}
+				kpid = (pid_t)event_msg;
 				if (find_child(ctx, kpid)) {
 					// Kid is prematurely born, let it continue its life
 					ptrace(PTRACE_SYSCALL, kpid, 0, 0);
