@@ -55,6 +55,19 @@ class ProcessManagementTestCase(testing.BaseTestCase):
         self.run_child_function_in_catbox(child_function=child_calling_subprocess_kill)
         self.verify_message_from_child()
 
+    def test_many_short_lived_subprocesses(self):
+        """Stress fork/exit handling with short-lived subprocesses."""
+        def child_spawning_many_short_lived_subprocesses():
+            for _ in range(200):
+                sub = subprocess.Popen(['/bin/true'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                sub.wait()
+            os.write(self.write_pipe, self.default_expected_message_from_child)
+
+        self.run_child_function_in_catbox(
+            child_function=child_spawning_many_short_lived_subprocesses
+        )
+        self.verify_message_from_child()
+
 
 class WatchdogTestCase(testing.BaseTestCase):
 
